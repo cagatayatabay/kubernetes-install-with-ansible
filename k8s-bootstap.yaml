@@ -1,0 +1,23 @@
+---
+
+- name: Prepare Linux for K8s Installation
+  hosts: all
+  become_user: root
+  become: true
+  tasks:
+    - name: Install k8s items
+      yum:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+
+    - name: Enable kubelet
+      systemd:
+        name: kubelet
+        daemon_reload: yes
+        state: restarted
+
+    - name: Initialize the Kubernetes cluster using kubeadm
+      command: kubeadm init --control-plane-endpoint "$haproxyip:6443" --upload-certs
