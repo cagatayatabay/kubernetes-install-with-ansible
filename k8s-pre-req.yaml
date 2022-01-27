@@ -1,0 +1,45 @@
+---
+
+- name: Prepare Linux for K8s Installation
+  hosts: all
+  become_user: root
+  become: true
+  tasks:
+    - name: Disable swap permanently, persist reboots
+      replace:
+        path: /etc/fstab
+        regexp: '^(\s*)([^#\n]+\s+)(\w+\s+)swap(\s+.*)$'
+        replace: '#\1\2\3swap\4'
+
+    - name: Disable swap
+      command: swapoff -a
+      when: ansible_swaptotal_mb > 0
+
+    - name: As a requirement for your Linux Node's iptables to correctly see bridged traffic
+      shell:
+        cmd: |
+          cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+          br_netfilter
+          EOF
+          cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.bridge.bridge-nf-call-iptables = 1
+          EOF
+
+    - name: Reload sysctl conf
+      shell: sysctl --system
+
+    - name: setenforce
+      shell: setenforce 0
+
+    - name: Disable SELinux
+      selinux:
+        state: disabled
+
+    - name: Stop and disable firewalld service
+      systemd:
+        name:    firewalld
+        enabled: no
+        state:   stopped
+    - name: Reboot the machine with all defaults options
+      reboot:
