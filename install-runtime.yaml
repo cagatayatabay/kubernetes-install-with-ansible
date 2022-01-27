@@ -1,0 +1,68 @@
+---
+
+- name: Prepare Linux for K8s Installation
+  hosts: all
+  become_user: root
+  become: true
+  tasks:
+    - name: Install docker
+      yum:
+        name: "{{ item }}"
+        state: latest
+      with_items:
+        - docker-ce
+        - socat
+        - conntrack
+
+    - name: Creates directories
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+        - /etc/docker/
+        - /etc/systemd/system/docker.service.d/
+
+    - name: Docker config
+      shell:
+        cmd: |
+          cat <<EOF | tee /etc/docker/daemon.json
+          {
+            "exec-opts": ["native.cgroupdriver=systemd"],
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "100m"
+            },
+            "storage-driver": "overlay2",
+            "graph": "/docker"
+          }
+          EOF
+          cat <<EOF | tee /etc/systemd/system/docker.service.d/http-proxy.conf
+          [Service]
+          Environment="HTTP_PROXY=http://username:pass@proxy:80/"
+          Environment="HTTPS_PROXY=http://username:pass@proxy:80/"
+          Environment="NO_PROXY=localhost,127.0.0.1"
+          EOF
+          cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+          enabled=1
+          gpgcheck=1
+          repo_gpgcheck=1
+          gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+          EOF
+
+    - name: Enable and Start Docker
+      systemd:
+        name: docker
+        daemon_reload: yes
+        enabled: yes
+        state: started
+
+    - name: Add proxy to yum.conf
+      blockinfile:
+        path: /etc/yum.conf
+        block: |
+          proxy=http://proxy:80
+          proxy_username=username
+          proxy_password=pass
